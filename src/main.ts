@@ -12,16 +12,19 @@ interface TeamData {
 
 async function run(): Promise<void> {
   try {
+    const PERSONAL_TOKEN_TYPE = "personal"
+    const APP_TOKEN_TYPE = "app"
     const token = core.getInput('repo-token', {required: true})
     const teamDataPath = core.getInput('team-data-path')
     const teamNamePrefix = core.getInput('prefix-teams-with')
+    const tokenType = core.getInput('github-token-type')
 
     const client = new github.GitHub(token)
     const org = github.context.repo.owner
 
     core.debug('Fetching authenticated user')
-    const authenticatedUserResponse = await client.users.getAuthenticated()
-    const authenticatedUser = authenticatedUserResponse.data.login
+    const authenticatedUserResponse = tokenType == PERSONAL_TOKEN_TYPE? await client.users.getAuthenticated() : null
+    const authenticatedUser =  tokenType == PERSONAL_TOKEN_TYPE? authenticatedUserResponse.data.login : null
     core.debug(`GitHub client is authenticated as ${authenticatedUser}`)
 
     core.debug(`Fetching team data from ${teamDataPath}`)
@@ -193,13 +196,16 @@ async function createTeamWithNoMembers(
 ): Promise<void> {
   await client.teams.create({org, name: teamName, description, privacy: 'closed'})
 
-  core.debug(`Removing creator (${authenticatedUser}) from ${teamSlug}`)
+  if( authenticatedUser != null ) {
+    core.debug(`Removing creator (${authenticatedUser}) from ${teamSlug}`)
 
-  await client.teams.removeMembershipInOrg({
-    org,
-    team_slug: teamSlug,
-    username: authenticatedUser
-  })
+    await client.teams.removeMembershipInOrg({
+      org,
+      team_slug: teamSlug,
+      username: authenticatedUser
+    })
+  }
+  
 }
 
 async function getExistingTeamAndMembers(

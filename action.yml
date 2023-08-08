@@ -13,6 +13,9 @@ inputs:
   prefix-teams-with:
     description: 'A prefix to add to the name of each team when creating the associated GitHub Team'
     default: ''
+  github-token-type:
+    description: 'A type to indicate whether this is a personal access token or github app access token. Allowed types: "personal" and "app". This impacts the ability to create empty groups'
+    default: 'personal'
 runs:
   using: 'node12'
   main: 'dist/index.js'

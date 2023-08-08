@@ -1,6 +1,6 @@
 {
   "name": "team-sync",
-  "version": "0.6.0",
+  "version": "0.6.1-app-token",
   "private": true,
   "description": "GitHub action to synchronize GitHub Teams with the contents of a teams document",
   "main": "lib/main.js",
@@ -15,7 +15,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rmacklin/team-sync.git"
+    "url": "git+https://github.com/prasadprabhu333/team-sync.git"
   },
   "keywords": [
     "actions",

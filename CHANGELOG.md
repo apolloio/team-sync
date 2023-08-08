@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.1-app-token
+
+Support GitHub App Tokens
+
+
 ## 0.6.0
 
 Support GitHub Enterprise Server deployments
