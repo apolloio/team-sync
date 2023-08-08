@@ -26,7 +26,13 @@ async function run(): Promise<void> {
 
     let authenticatedUserResponse = null
     let authenticatedUser = null
-    
+    if(tokenType === PERSONAL_TOKEN_TYPE) {
+      core.debug('Fetching authenticated user')
+      authenticatedUserResponse = await client.users.getAuthenticated()
+      authenticatedUser =  authenticatedUserResponse.data.login
+    } else {
+      core.info("Running as app, did not get authenticated user")
+    }
     
     core.debug(`GitHub client is authenticated as ${authenticatedUser}`)
 
@@ -53,7 +59,7 @@ async function run(): Promise<void> {
 async function synchronizeTeamData(
   client: github.GitHub,
   org: string,
-  authenticatedUser: string,
+  authenticatedUser: string | null,
   teams: Map<string, TeamData>,
   teamNamePrefix: string
 ): Promise<void> {
@@ -194,7 +200,7 @@ async function createTeamWithNoMembers(
   org: string,
   teamName: string,
   teamSlug: string,
-  authenticatedUser: string,
+  authenticatedUser: string | null,
   description?: string
 ): Promise<void> {
   await client.teams.create({org, name: teamName, description, privacy: 'closed'})

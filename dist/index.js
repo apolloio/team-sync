@@ -4167,14 +4167,25 @@ const slugify_1 = __importDefault(__webpack_require__(178));
 const yaml = __importStar(__webpack_require__(414));
 async function run() {
     try {
+        const PERSONAL_TOKEN_TYPE = "personal";
+        const APP_TOKEN_TYPE = "app";
         const token = core.getInput('repo-token', { required: true });
         const teamDataPath = core.getInput('team-data-path');
         const teamNamePrefix = core.getInput('prefix-teams-with');
+        const tokenType = core.getInput('github-token-type');
+        core.debug(`tokenType: ${tokenType}`);
         const client = new github.GitHub(token);
         const org = github.context.repo.owner;
-        core.debug('Fetching authenticated user');
-        const authenticatedUserResponse = await client.users.getAuthenticated();
-        const authenticatedUser = authenticatedUserResponse.data.login;
+        let authenticatedUserResponse = null;
+        let authenticatedUser = null;
+        if (tokenType === PERSONAL_TOKEN_TYPE) {
+            core.debug('Fetching authenticated user');
+            authenticatedUserResponse = await client.users.getAuthenticated();
+            authenticatedUser = authenticatedUserResponse.data.login;
+        }
+        else {
+            core.info("Running as app, did not get authenticated user");
+        }
         core.debug(`GitHub client is authenticated as ${authenticatedUser}`);
         core.debug(`Fetching team data from ${teamDataPath}`);
         const teamDataContent = await fetchContent(client, teamDataPath);
@@ -4286,12 +4297,14 @@ async function addNewTeamMembers(client, org, teamSlug, existingMembers, desired
 }
 async function createTeamWithNoMembers(client, org, teamName, teamSlug, authenticatedUser, description) {
     await client.teams.create({ org, name: teamName, description, privacy: 'closed' });
-    core.debug(`Removing creator (${authenticatedUser}) from ${teamSlug}`);
-    await client.teams.removeMembershipInOrg({
-        org,
-        team_slug: teamSlug,
-        username: authenticatedUser
-    });
+    if (authenticatedUser != null) {
+        core.debug(`Removing creator (${authenticatedUser}) from ${teamSlug}`);
+        await client.teams.removeMembershipInOrg({
+            org,
+            team_slug: teamSlug,
+            username: authenticatedUser
+        });
+    }
 }
 async function getExistingTeamAndMembers(client, org, teamSlug) {
     let existingTeam;

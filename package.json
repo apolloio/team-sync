@@ -22,7 +22,7 @@
     "node",
     "setup"
   ],
-  "author": "Richard Macklin",
+  "author": "Prasad",
   "license": "MIT",
   "dependencies": {
     "@actions/core": "^1.2.6",
