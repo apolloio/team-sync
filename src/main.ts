@@ -20,7 +20,7 @@ async function run(): Promise<void> {
     const tokenType = core.getInput('github-token-type')
 
     
-    core.debug(`tokenType: ${tokenType}`)
+    core.info(`tokenType: ${tokenType}`)
     const client = new github.GitHub(token)
     const org = github.context.repo.owner
 
@@ -28,8 +28,10 @@ async function run(): Promise<void> {
     let authenticatedUser = null
     if(tokenType === PERSONAL_TOKEN_TYPE) {
       core.debug('Fetching authenticated user')
-      authenticatedUserResponse = tokenType == PERSONAL_TOKEN_TYPE? await client.users.getAuthenticated() : null
-      authenticatedUser =  tokenType == PERSONAL_TOKEN_TYPE? authenticatedUserResponse.data.login : null
+      authenticatedUserResponse = await client.users.getAuthenticated()
+      authenticatedUser =  authenticatedUserResponse.data.login
+    } else {
+      core.info("Running as app, did not get authenticated user")
     }
     
     core.debug(`GitHub client is authenticated as ${authenticatedUser}`)
