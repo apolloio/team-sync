@@ -19,12 +19,19 @@ async function run(): Promise<void> {
     const teamNamePrefix = core.getInput('prefix-teams-with')
     const tokenType = core.getInput('github-token-type')
 
+    
+    core.debug(`tokenType: ${tokenType}`)
     const client = new github.GitHub(token)
     const org = github.context.repo.owner
 
-    core.debug('Fetching authenticated user')
-    const authenticatedUserResponse = tokenType == PERSONAL_TOKEN_TYPE? await client.users.getAuthenticated() : null
-    const authenticatedUser =  tokenType == PERSONAL_TOKEN_TYPE? authenticatedUserResponse.data.login : null
+    let authenticatedUserResponse = null
+    let authenticatedUser = null
+    if(tokenType === PERSONAL_TOKEN_TYPE) {
+      core.debug('Fetching authenticated user')
+      authenticatedUserResponse = tokenType == PERSONAL_TOKEN_TYPE? await client.users.getAuthenticated() : null
+      authenticatedUser =  tokenType == PERSONAL_TOKEN_TYPE? authenticatedUserResponse.data.login : null
+    }
+    
     core.debug(`GitHub client is authenticated as ${authenticatedUser}`)
 
     core.debug(`Fetching team data from ${teamDataPath}`)
