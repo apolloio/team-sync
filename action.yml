@@ -20,5 +20,5 @@ inputs:
     description: 'A type to indicate whether this is a personal access token or github app access token. Allowed types: "personal" and "app". This impacts the ability to create empty groups'
     default: 'personal'
 runs:
-  using: 'node12'
+  using: 'node16'
   main: 'dist/index.js'
