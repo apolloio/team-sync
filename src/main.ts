@@ -13,27 +13,27 @@ interface TeamData {
 
 async function run(): Promise<void> {
   try {
-    const PERSONAL_TOKEN_TYPE = "personal"
-    const APP_TOKEN_TYPE = "app"
+    const PERSONAL_TOKEN_TYPE = 'personal'
+    const APP_TOKEN_TYPE = 'app'
     const token = core.getInput('repo-token', {required: true})
     const teamDataPath = core.getInput('team-data-path')
     const teamNamePrefix = core.getInput('prefix-teams-with')
     const tokenType = core.getInput('github-token-type')
     const allowInviteUsers = JSON.parse(core.getInput('allow-invite-members'))
-    
+
     core.debug(`tokenType: ${tokenType}, allowInviteUsers: ${allowInviteUsers}`)
     const client = new github.GitHub(token)
     const org = github.context.repo.owner
 
     let authenticatedUserResponse = null
     let authenticatedUser = null
-    if(tokenType === PERSONAL_TOKEN_TYPE) {
+    if (tokenType === PERSONAL_TOKEN_TYPE) {
       core.debug('Fetching authenticated user')
       authenticatedUserResponse = await client.users.getAuthenticated()
-      authenticatedUser =  authenticatedUserResponse.data.login
+      authenticatedUser = authenticatedUserResponse.data.login
       core.info(`GitHub client is authenticated as ${authenticatedUser}`)
     } else {
-      core.info("Running as app, did not get authenticated user")
+      core.info('Running as app, did not get authenticated user')
     }
 
     core.info(`Fetching team data from ${teamDataPath}`)
@@ -49,7 +49,14 @@ async function run(): Promise<void> {
       )}`
     )
 
-    await synchronizeTeamData(client, org, authenticatedUser, teams, teamNamePrefix, allowInviteUsers)
+    await synchronizeTeamData(
+      client,
+      org,
+      authenticatedUser,
+      teams,
+      teamNamePrefix,
+      allowInviteUsers
+    )
   } catch (error) {
     core.error(error)
     core.setFailed(error.message)
@@ -65,11 +72,10 @@ async function synchronizeTeamData(
   allowInviteUsers: boolean
 ): Promise<void> {
   const existingTeams = await client.teams.list({
-    org: org,
-  });
-  const existingTeamsMap : { [key: string]: number }= {}
+    org: org
+  })
+  const existingTeamsMap: {[key: string]: number} = {}
   for (const existingTeam of existingTeams.data) {
-
     existingTeamsMap[existingTeam.name] = existingTeam.id
   }
 
@@ -83,7 +89,6 @@ async function synchronizeTeamData(
     }
 
     const {description, members: desiredMembers} = teamData
-    
 
     core.debug(`Desired team members for team slug ${teamSlug}:`)
     core.debug(JSON.stringify(desiredMembers))
@@ -98,11 +103,27 @@ async function synchronizeTeamData(
       await removeFormerTeamMembers(client, org, teamSlug, existingMembers, desiredMembers)
     } else {
       core.info(`No team was found in ${org} with slug ${teamSlug}. Creating one.`)
-       const parentTeamId =  teamData.parent_team !== undefined? existingTeamsMap[teamData.parent_team]: null
-      await createTeamWithNoMembers(client, org, teamName, teamSlug, authenticatedUser, description, parentTeamId)
+      const parentTeamId =
+        teamData.parent_team !== undefined ? existingTeamsMap[teamData.parent_team] : null
+      await createTeamWithNoMembers(
+        client,
+        org,
+        teamName,
+        teamSlug,
+        authenticatedUser,
+        description,
+        parentTeamId
+      )
     }
 
-    await addNewTeamMembers(client, org, teamSlug, existingMembers, desiredMembers, allowInviteUsers)
+    await addNewTeamMembers(
+      client,
+      org,
+      teamSlug,
+      existingMembers,
+      desiredMembers,
+      allowInviteUsers
+    )
   }
 }
 
@@ -151,7 +172,6 @@ function parseTeamData(rawTeamConfig: string): Map<string, TeamData> {
 
           if (typeof parent_team === 'string') {
             parsedTeamData.parent_team = parent_team
-
           } else {
             throw new Error(`Invalid parent_team property for team ${teamName} (expected a string)`)
           }
@@ -214,27 +234,26 @@ async function addNewTeamMembers(
   for (const username of desiredMembers) {
     if (!existingMembers.includes(username)) {
       let addUser = true
-      // if 
-      if(! allowInviteUsers)  {
+      // if
+      if (!allowInviteUsers) {
         const response = await client.orgs.checkMembership({
           org: org,
-          username: username,
-        });
+          username: username
+        })
         if (response.status === 204) {
-          console.log(`${username} is a member of ${org}.`);
+          console.log(`${username} is a member of ${org}.`)
           addUser = true
         } else {
-          console.log(`${username} is not a member of ${org}.`);
+          console.log(`${username} is not a member of ${org}.`)
           addUser = false
         }
       }
-      if(addUser) {
+      if (addUser) {
         core.info(`Adding ${username} to ${teamSlug}`)
         await client.teams.addOrUpdateMembershipInOrg({org, team_slug: teamSlug, username})
       } else {
         core.info(`${username} is not a member of ${org} yet, so not adding to ${teamSlug}`)
       }
-      
     }
   }
 }
@@ -248,15 +267,19 @@ async function createTeamWithNoMembers(
   description?: string,
   parentTeamId?: number | null
 ): Promise<void> {
-
-  let createTeamRequest: Octokit.TeamsCreateParams = {org, name: teamName, description, privacy: 'closed'}
-  if(parentTeamId != null) {
+  let createTeamRequest: Octokit.TeamsCreateParams = {
+    org,
+    name: teamName,
+    description,
+    privacy: 'closed'
+  }
+  if (parentTeamId != null) {
     createTeamRequest.parent_team_id = parentTeamId
   }
 
   await client.teams.create(createTeamRequest)
 
-  if( authenticatedUser != null ) {
+  if (authenticatedUser != null) {
     core.debug(`Removing creator (${authenticatedUser}) from ${teamSlug}`)
 
     await client.teams.removeMembershipInOrg({
@@ -265,7 +288,6 @@ async function createTeamWithNoMembers(
       username: authenticatedUser
     })
   }
-  
 }
 
 async function getExistingTeamAndMembers(
@@ -295,6 +317,7 @@ async function getExistingTeamAndMembers(
 }
 
 async function fetchContent(client: github.GitHub, repoPath: string): Promise<string> {
+  core.info(`Fetching content from ${repoPath} ${JSON.stringify(github.context.repo)}`)
   const response = await client.repos.getContents({
     owner: github.context.repo.owner,
     repo: github.context.repo.repo,

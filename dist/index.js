@@ -4148,27 +4148,27 @@ function checkMode (stat, options) {
 /***/ 198:
 /***/ (function(__unusedmodule, exports, __webpack_require__) {
 
-  "use strict";
+"use strict";
 
-  var __importStar = (this && this.__importStar) || function (mod) {
-      if (mod && mod.__esModule) return mod;
-      var result = {};
-      if (mod != null) for (var k in mod) if (Object.hasOwnProperty.call(mod, k)) result[k] = mod[k];
-      result["default"] = mod;
-      return result;
-  };
-  var __importDefault = (this && this.__importDefault) || function (mod) {
-      return (mod && mod.__esModule) ? mod : { "default": mod };
-  };
-  Object.defineProperty(exports, "__esModule", { value: true });
-  const core = __importStar(__webpack_require__(470));
-  const github = __importStar(__webpack_require__(469));
-  const slugify_1 = __importDefault(__webpack_require__(178));
-  const yaml = __importStar(__webpack_require__(414));
-  async function run() {
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (Object.hasOwnProperty.call(mod, k)) result[k] = mod[k];
+    result["default"] = mod;
+    return result;
+};
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const core = __importStar(__webpack_require__(470));
+const github = __importStar(__webpack_require__(469));
+const slugify_1 = __importDefault(__webpack_require__(178));
+const yaml = __importStar(__webpack_require__(414));
+async function run() {
     try {
-        const PERSONAL_TOKEN_TYPE = "personal";
-        const APP_TOKEN_TYPE = "app";
+        const PERSONAL_TOKEN_TYPE = 'personal';
+        const APP_TOKEN_TYPE = 'app';
         const token = core.getInput('repo-token', { required: true });
         const teamDataPath = core.getInput('team-data-path');
         const teamNamePrefix = core.getInput('prefix-teams-with');
@@ -4186,7 +4186,7 @@ function checkMode (stat, options) {
             core.info(`GitHub client is authenticated as ${authenticatedUser}`);
         }
         else {
-            core.info("Running as app, did not get authenticated user");
+            core.info('Running as app, did not get authenticated user');
         }
         core.info(`Fetching team data from ${teamDataPath}`);
         const teamDataContent = await fetchContent(client, teamDataPath);
@@ -4202,7 +4202,7 @@ function checkMode (stat, options) {
 }
 async function synchronizeTeamData(client, org, authenticatedUser, teams, teamNamePrefix, allowInviteUsers) {
     const existingTeams = await client.teams.list({
-        org: org,
+        org: org
     });
     const existingTeamsMap = {};
     for (const existingTeam of existingTeams.data) {
@@ -4309,11 +4309,11 @@ async function addNewTeamMembers(client, org, teamSlug, existingMembers, desired
     for (const username of desiredMembers) {
         if (!existingMembers.includes(username)) {
             let addUser = true;
-            // if 
+            // if
             if (!allowInviteUsers) {
                 const response = await client.orgs.checkMembership({
                     org: org,
-                    username: username,
+                    username: username
                 });
                 if (response.status === 204) {
                     console.log(`${username} is a member of ${org}.`);
@@ -4335,7 +4335,12 @@ async function addNewTeamMembers(client, org, teamSlug, existingMembers, desired
     }
 }
 async function createTeamWithNoMembers(client, org, teamName, teamSlug, authenticatedUser, description, parentTeamId) {
-    let createTeamRequest = { org, name: teamName, description, privacy: 'closed' };
+    let createTeamRequest = {
+        org,
+        name: teamName,
+        description,
+        privacy: 'closed'
+    };
     if (parentTeamId != null) {
         createTeamRequest.parent_team_id = parentTeamId;
     }
@@ -4364,6 +4369,7 @@ async function getExistingTeamAndMembers(client, org, teamSlug) {
     return { existingTeam, existingMembers };
 }
 async function fetchContent(client, repoPath) {
+    core.info(`Fetching content from ${repoPath} ${JSON.stringify(github.context.repo)}`);
     const response = await client.repos.getContents({
         owner: github.context.repo.owner,
         repo: github.context.repo.repo,
