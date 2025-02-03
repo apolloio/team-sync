@@ -260,6 +260,7 @@ async function addNewTeamMembers(
         } catch (error) {
           core.info(`Error checking if ${username} is a member of ${org}`)
           core.info(error)
+          throw error
         }
       }
       if (addUser) {
