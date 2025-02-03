@@ -4223,14 +4223,18 @@ async function synchronizeTeamData(client, org, authenticatedUser, teams, teamNa
         if (existingTeam) {
             core.debug(`Existing team members for team slug ${teamSlug}:`);
             core.debug(JSON.stringify(existingMembers));
+            core.info(`Updating in org team ${teamSlug}`);
             await client.teams.updateInOrg({ org, team_slug: teamSlug, name: teamName, description });
+            core.info(`Removing former team members from ${teamSlug} ${existingMembers} ${desiredMembers}`);
             await removeFormerTeamMembers(client, org, teamSlug, existingMembers, desiredMembers);
+            core.info(`Done removing team members from ${teamSlug}`);
         }
         else {
             core.info(`No team was found in ${org} with slug ${teamSlug}. Creating one.`);
             const parentTeamId = teamData.parent_team !== undefined ? existingTeamsMap[teamData.parent_team] : null;
             await createTeamWithNoMembers(client, org, teamName, teamSlug, authenticatedUser, description, parentTeamId);
         }
+        core.info(`Adding new team members to ${teamSlug}`);
         await addNewTeamMembers(client, org, teamSlug, existingMembers, desiredMembers, allowInviteUsers);
     }
 }
@@ -4374,6 +4378,7 @@ async function getExistingTeamAndMembers(client, org, teamSlug) {
 function fetchContent(path) {
     return fs_1.readFileSync(path).toString();
 }
+run();
 run();
 
 
