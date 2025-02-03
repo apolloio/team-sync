@@ -2,6 +2,7 @@ import * as core from '@actions/core'
 import * as github from '@actions/github'
 import {Octokit} from '@octokit/rest'
 import slugify from '@sindresorhus/slugify'
+import {readFileSync} from 'fs'
 import * as yaml from 'js-yaml'
 
 interface TeamData {
@@ -37,7 +38,7 @@ async function run(): Promise<void> {
     }
 
     core.info(`Fetching team data from ${teamDataPath}`)
-    const teamDataContent = await fetchContent(client, teamDataPath)
+    const teamDataContent = fetchContent(teamDataPath)
 
     core.debug(`raw teams config:\n${teamDataContent}`)
 
@@ -316,26 +317,8 @@ async function getExistingTeamAndMembers(
   return {existingTeam, existingMembers}
 }
 
-async function fetchContent(client: github.GitHub, repoPath: string): Promise<string> {
-  core.info(`Fetching content from ${repoPath} ${JSON.stringify(github.context.repo)}`)
-  const response = await client.repos.getContents({
-    owner: github.context.repo.owner,
-    repo: github.context.repo.repo,
-    path: repoPath,
-    ref: github.context.sha
-  })
-
-  if (Array.isArray(response.data)) {
-    throw new Error('path must point to a single file, not a directory')
-  }
-
-  const {content, encoding} = response.data
-
-  if (typeof content !== 'string' || encoding !== 'base64') {
-    throw new Error('Octokit.repos.getContents returned an unexpected response')
-  }
-
-  return Buffer.from(content, encoding).toString()
+function fetchContent(path: string): string {
+  return readFileSync(path).toString()
 }
 
 run()

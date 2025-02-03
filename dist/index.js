@@ -4164,6 +4164,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const core = __importStar(__webpack_require__(470));
 const github = __importStar(__webpack_require__(469));
 const slugify_1 = __importDefault(__webpack_require__(178));
+const fs_1 = __webpack_require__(747);
 const yaml = __importStar(__webpack_require__(414));
 async function run() {
     try {
@@ -4189,7 +4190,7 @@ async function run() {
             core.info('Running as app, did not get authenticated user');
         }
         core.info(`Fetching team data from ${teamDataPath}`);
-        const teamDataContent = await fetchContent(client, teamDataPath);
+        const teamDataContent = fetchContent(teamDataPath);
         core.debug(`raw teams config:\n${teamDataContent}`);
         const teams = parseTeamData(teamDataContent);
         core.debug(`Parsed teams configuration into this mapping of team names to team data: ${JSON.stringify(Object.fromEntries(teams))}`);
@@ -4368,22 +4369,8 @@ async function getExistingTeamAndMembers(client, org, teamSlug) {
     }
     return { existingTeam, existingMembers };
 }
-async function fetchContent(client, repoPath) {
-    core.info(`Fetching content from ${repoPath} ${JSON.stringify(github.context.repo)}`);
-    const response = await client.repos.getContents({
-        owner: github.context.repo.owner,
-        repo: github.context.repo.repo,
-        path: repoPath,
-        ref: github.context.sha
-    });
-    if (Array.isArray(response.data)) {
-        throw new Error('path must point to a single file, not a directory');
-    }
-    const { content, encoding } = response.data;
-    if (typeof content !== 'string' || encoding !== 'base64') {
-        throw new Error('Octokit.repos.getContents returned an unexpected response');
-    }
-    return Buffer.from(content, encoding).toString();
+function fetchContent(path) {
+    return fs_1.readFileSync(path).toString();
 }
 run();
 
