@@ -99,9 +99,13 @@ async function synchronizeTeamData(
     if (existingTeam) {
       core.debug(`Existing team members for team slug ${teamSlug}:`)
       core.debug(JSON.stringify(existingMembers))
-
+      core.info(`Updating in org team ${teamSlug}`)
       await client.teams.updateInOrg({org, team_slug: teamSlug, name: teamName, description})
+      core.info(
+        `Removing former team members from ${teamSlug} ${existingMembers} ${desiredMembers}`
+      )
       await removeFormerTeamMembers(client, org, teamSlug, existingMembers, desiredMembers)
+      core.info(`Done removing team members from ${teamSlug}`)
     } else {
       core.info(`No team was found in ${org} with slug ${teamSlug}. Creating one.`)
       const parentTeamId =
@@ -322,5 +326,7 @@ async function getExistingTeamAndMembers(
 function fetchContent(path: string): string {
   return readFileSync(path).toString()
 }
+
+run()
 
 run()
