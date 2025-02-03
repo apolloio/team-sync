@@ -4314,21 +4314,29 @@ async function removeFormerTeamMembers(client, org, teamSlug, existingMembers, d
 }
 async function addNewTeamMembers(client, org, teamSlug, existingMembers, desiredMembers, allowInviteUsers) {
     for (const username of desiredMembers) {
+        core.info(`Checking if ${username} is in existing members`);
         if (!existingMembers.includes(username)) {
+            core.info(`${username} is not in existing members`);
             let addUser = true;
-            // if
             if (!allowInviteUsers) {
-                const response = await client.orgs.checkMembership({
-                    org: org,
-                    username: username
-                });
-                if (response.status === 204) {
-                    console.log(`${username} is a member of ${org}.`);
-                    addUser = true;
+                core.info(`Checking if ${username} is a member of ${org}`);
+                try {
+                    const response = await client.orgs.checkMembership({
+                        org: org,
+                        username: username
+                    });
+                    if (response.status === 204) {
+                        console.log(`${username} is a member of ${org}.`);
+                        addUser = true;
+                    }
+                    else {
+                        console.log(`${username} is not a member of ${org}.`);
+                        addUser = false;
+                    }
                 }
-                else {
-                    console.log(`${username} is not a member of ${org}.`);
-                    addUser = false;
+                catch (error) {
+                    core.info(`Error checking if ${username} is a member of ${org}`);
+                    core.info(error);
                 }
             }
             if (addUser) {
