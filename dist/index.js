@@ -4296,7 +4296,9 @@ function prefixName(unprefixedName, prefix) {
     return trimmedPrefix === '' ? unprefixedName : `${trimmedPrefix} ${unprefixedName}`;
 }
 async function removeFormerTeamMembers(client, org, teamSlug, existingMembers, desiredMembers) {
+    core.info(`Desired members: ${desiredMembers}`);
     for (const username of existingMembers) {
+        core.info(`Checking if ${username} is in desired members`);
         if (!desiredMembers.includes(username)) {
             core.info(`Removing ${username} from ${teamSlug}`);
             await client.teams.removeMembershipInOrg({ org, team_slug: teamSlug, username });
