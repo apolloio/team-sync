@@ -116,7 +116,7 @@ async function synchronizeTeamData(
         parentTeamId
       )
     }
-
+    core.info(`Adding new team members to ${teamSlug}`)
     await addNewTeamMembers(
       client,
       org,
