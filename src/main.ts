@@ -2,6 +2,7 @@ import * as core from '@actions/core'
 import * as github from '@actions/github'
 import {Octokit} from '@octokit/rest'
 import slugify from '@sindresorhus/slugify'
+import {readFileSync} from 'fs'
 import * as yaml from 'js-yaml'
 
 interface TeamData {
@@ -13,31 +14,36 @@ interface TeamData {
 
 async function run(): Promise<void> {
   try {
-    const PERSONAL_TOKEN_TYPE = "personal"
-    const APP_TOKEN_TYPE = "app"
+    const PERSONAL_TOKEN_TYPE = 'personal'
+    const APP_TOKEN_TYPE = 'app'
     const token = core.getInput('repo-token', {required: true})
+    // if set will treat team-data-path as a local file path, otherwise will treat it as a path to a file in the repo
+    const readFromFile = core.getInput('read-from-file') || true
     const teamDataPath = core.getInput('team-data-path')
     const teamNamePrefix = core.getInput('prefix-teams-with')
     const tokenType = core.getInput('github-token-type')
     const allowInviteUsers = JSON.parse(core.getInput('allow-invite-members'))
-    
+
     core.debug(`tokenType: ${tokenType}, allowInviteUsers: ${allowInviteUsers}`)
     const client = new github.GitHub(token)
     const org = github.context.repo.owner
 
     let authenticatedUserResponse = null
     let authenticatedUser = null
-    if(tokenType === PERSONAL_TOKEN_TYPE) {
+    if (tokenType === PERSONAL_TOKEN_TYPE) {
       core.debug('Fetching authenticated user')
       authenticatedUserResponse = await client.users.getAuthenticated()
-      authenticatedUser =  authenticatedUserResponse.data.login
+      authenticatedUser = authenticatedUserResponse.data.login
       core.info(`GitHub client is authenticated as ${authenticatedUser}`)
     } else {
-      core.info("Running as app, did not get authenticated user")
+      core.info('Running as app, did not get authenticated user')
     }
 
     core.info(`Fetching team data from ${teamDataPath}`)
-    const teamDataContent = await fetchContent(client, teamDataPath)
+
+    const teamDataContent = readFromFile
+      ? await fetchContentFromFile(teamDataPath)
+      : await fetchContent(client, teamDataPath)
 
     core.debug(`raw teams config:\n${teamDataContent}`)
 
@@ -49,7 +55,14 @@ async function run(): Promise<void> {
       )}`
     )
 
-    await synchronizeTeamData(client, org, authenticatedUser, teams, teamNamePrefix, allowInviteUsers)
+    await synchronizeTeamData(
+      client,
+      org,
+      authenticatedUser,
+      teams,
+      teamNamePrefix,
+      allowInviteUsers
+    )
   } catch (error) {
     core.error(error)
     core.setFailed(error.message)
@@ -65,11 +78,10 @@ async function synchronizeTeamData(
   allowInviteUsers: boolean
 ): Promise<void> {
   const existingTeams = await client.teams.list({
-    org: org,
-  });
-  const existingTeamsMap : { [key: string]: number }= {}
+    org: org
+  })
+  const existingTeamsMap: {[key: string]: number} = {}
   for (const existingTeam of existingTeams.data) {
-
     existingTeamsMap[existingTeam.name] = existingTeam.id
   }
 
@@ -83,7 +95,6 @@ async function synchronizeTeamData(
     }
 
     const {description, members: desiredMembers} = teamData
-    
 
     core.debug(`Desired team members for team slug ${teamSlug}:`)
     core.debug(JSON.stringify(desiredMembers))
@@ -93,16 +104,36 @@ async function synchronizeTeamData(
     if (existingTeam) {
       core.debug(`Existing team members for team slug ${teamSlug}:`)
       core.debug(JSON.stringify(existingMembers))
-
+      core.info(`Updating in org team ${teamSlug}`)
       await client.teams.updateInOrg({org, team_slug: teamSlug, name: teamName, description})
+      core.info(
+        `Removing former team members from ${teamSlug} ${existingMembers} ${desiredMembers}`
+      )
       await removeFormerTeamMembers(client, org, teamSlug, existingMembers, desiredMembers)
+      core.info(`Done removing team members from ${teamSlug}`)
     } else {
       core.info(`No team was found in ${org} with slug ${teamSlug}. Creating one.`)
-       const parentTeamId =  teamData.parent_team !== undefined? existingTeamsMap[teamData.parent_team]: null
-      await createTeamWithNoMembers(client, org, teamName, teamSlug, authenticatedUser, description, parentTeamId)
+      const parentTeamId =
+        teamData.parent_team !== undefined ? existingTeamsMap[teamData.parent_team] : null
+      await createTeamWithNoMembers(
+        client,
+        org,
+        teamName,
+        teamSlug,
+        authenticatedUser,
+        description,
+        parentTeamId
+      )
     }
-
-    await addNewTeamMembers(client, org, teamSlug, existingMembers, desiredMembers, allowInviteUsers)
+    core.info(`Adding new team members to ${teamSlug}`)
+    await addNewTeamMembers(
+      client,
+      org,
+      teamSlug,
+      existingMembers,
+      desiredMembers,
+      allowInviteUsers
+    )
   }
 }
 
@@ -151,7 +182,6 @@ function parseTeamData(rawTeamConfig: string): Map<string, TeamData> {
 
           if (typeof parent_team === 'string') {
             parsedTeamData.parent_team = parent_team
-
           } else {
             throw new Error(`Invalid parent_team property for team ${teamName} (expected a string)`)
           }
@@ -193,7 +223,9 @@ async function removeFormerTeamMembers(
   existingMembers: string[],
   desiredMembers: string[]
 ): Promise<void> {
+  core.info(`Desired members: ${desiredMembers}`)
   for (const username of existingMembers) {
+    core.info(`Checking if ${username} is in desired members`)
     if (!desiredMembers.includes(username)) {
       core.info(`Removing ${username} from ${teamSlug}`)
       await client.teams.removeMembershipInOrg({org, team_slug: teamSlug, username})
@@ -212,29 +244,36 @@ async function addNewTeamMembers(
   allowInviteUsers: boolean
 ): Promise<void> {
   for (const username of desiredMembers) {
+    core.info(`Checking if ${username} is in existing members`)
     if (!existingMembers.includes(username)) {
+      core.info(`${username} is not in existing members`)
       let addUser = true
-      // if 
-      if(! allowInviteUsers)  {
-        const response = await client.orgs.checkMembership({
-          org: org,
-          username: username,
-        });
-        if (response.status === 204) {
-          console.log(`${username} is a member of ${org}.`);
-          addUser = true
-        } else {
-          console.log(`${username} is not a member of ${org}.`);
-          addUser = false
+      if (!allowInviteUsers) {
+        core.info(`Checking if ${username} is a member of ${org}`)
+        try {
+          const response = await client.orgs.checkMembership({
+            org: org,
+            username: username
+          })
+          if (response.status === 204) {
+            console.log(`${username} is a member of ${org}.`)
+            addUser = true
+          } else {
+            console.log(`${username} is not a member of ${org}.`)
+            addUser = false
+          }
+        } catch (error) {
+          core.info(`Error checking if ${username} is a member of ${org}`)
+          core.info(error)
+          throw error
         }
       }
-      if(addUser) {
+      if (addUser) {
         core.info(`Adding ${username} to ${teamSlug}`)
         await client.teams.addOrUpdateMembershipInOrg({org, team_slug: teamSlug, username})
       } else {
         core.info(`${username} is not a member of ${org} yet, so not adding to ${teamSlug}`)
       }
-      
     }
   }
 }
@@ -248,15 +287,19 @@ async function createTeamWithNoMembers(
   description?: string,
   parentTeamId?: number | null
 ): Promise<void> {
-
-  let createTeamRequest: Octokit.TeamsCreateParams = {org, name: teamName, description, privacy: 'closed'}
-  if(parentTeamId != null) {
+  let createTeamRequest: Octokit.TeamsCreateParams = {
+    org,
+    name: teamName,
+    description,
+    privacy: 'closed'
+  }
+  if (parentTeamId != null) {
     createTeamRequest.parent_team_id = parentTeamId
   }
 
   await client.teams.create(createTeamRequest)
 
-  if( authenticatedUser != null ) {
+  if (authenticatedUser != null) {
     core.debug(`Removing creator (${authenticatedUser}) from ${teamSlug}`)
 
     await client.teams.removeMembershipInOrg({
@@ -265,7 +308,6 @@ async function createTeamWithNoMembers(
       username: authenticatedUser
     })
   }
-  
 }
 
 async function getExistingTeamAndMembers(
@@ -313,6 +355,10 @@ async function fetchContent(client: github.GitHub, repoPath: string): Promise<st
   }
 
   return Buffer.from(content, encoding).toString()
+}
+
+async function fetchContentFromFile(path: string): Promise<string> {
+  return readFileSync(path).toString()
 }
 
 run()

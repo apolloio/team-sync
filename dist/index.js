@@ -4148,28 +4148,31 @@ function checkMode (stat, options) {
 /***/ 198:
 /***/ (function(__unusedmodule, exports, __webpack_require__) {
 
-  "use strict";
+"use strict";
 
-  var __importStar = (this && this.__importStar) || function (mod) {
-      if (mod && mod.__esModule) return mod;
-      var result = {};
-      if (mod != null) for (var k in mod) if (Object.hasOwnProperty.call(mod, k)) result[k] = mod[k];
-      result["default"] = mod;
-      return result;
-  };
-  var __importDefault = (this && this.__importDefault) || function (mod) {
-      return (mod && mod.__esModule) ? mod : { "default": mod };
-  };
-  Object.defineProperty(exports, "__esModule", { value: true });
-  const core = __importStar(__webpack_require__(470));
-  const github = __importStar(__webpack_require__(469));
-  const slugify_1 = __importDefault(__webpack_require__(178));
-  const yaml = __importStar(__webpack_require__(414));
-  async function run() {
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (Object.hasOwnProperty.call(mod, k)) result[k] = mod[k];
+    result["default"] = mod;
+    return result;
+};
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const core = __importStar(__webpack_require__(470));
+const github = __importStar(__webpack_require__(469));
+const slugify_1 = __importDefault(__webpack_require__(178));
+const fs_1 = __webpack_require__(747);
+const yaml = __importStar(__webpack_require__(414));
+async function run() {
     try {
-        const PERSONAL_TOKEN_TYPE = "personal";
-        const APP_TOKEN_TYPE = "app";
+        const PERSONAL_TOKEN_TYPE = 'personal';
+        const APP_TOKEN_TYPE = 'app';
         const token = core.getInput('repo-token', { required: true });
+        // if set will treat team-data-path as a local file path, otherwise will treat it as a path to a file in the repo
+        const readFromFile = core.getInput('read-from-file') || true;
         const teamDataPath = core.getInput('team-data-path');
         const teamNamePrefix = core.getInput('prefix-teams-with');
         const tokenType = core.getInput('github-token-type');
@@ -4186,10 +4189,12 @@ function checkMode (stat, options) {
             core.info(`GitHub client is authenticated as ${authenticatedUser}`);
         }
         else {
-            core.info("Running as app, did not get authenticated user");
+            core.info('Running as app, did not get authenticated user');
         }
         core.info(`Fetching team data from ${teamDataPath}`);
-        const teamDataContent = await fetchContent(client, teamDataPath);
+        const teamDataContent = readFromFile
+            ? await fetchContentFromFile(teamDataPath)
+            : await fetchContent(client, teamDataPath);
         core.debug(`raw teams config:\n${teamDataContent}`);
         const teams = parseTeamData(teamDataContent);
         core.debug(`Parsed teams configuration into this mapping of team names to team data: ${JSON.stringify(Object.fromEntries(teams))}`);
@@ -4202,7 +4207,7 @@ function checkMode (stat, options) {
 }
 async function synchronizeTeamData(client, org, authenticatedUser, teams, teamNamePrefix, allowInviteUsers) {
     const existingTeams = await client.teams.list({
-        org: org,
+        org: org
     });
     const existingTeamsMap = {};
     for (const existingTeam of existingTeams.data) {
@@ -4222,14 +4227,18 @@ async function synchronizeTeamData(client, org, authenticatedUser, teams, teamNa
         if (existingTeam) {
             core.debug(`Existing team members for team slug ${teamSlug}:`);
             core.debug(JSON.stringify(existingMembers));
+            core.info(`Updating in org team ${teamSlug}`);
             await client.teams.updateInOrg({ org, team_slug: teamSlug, name: teamName, description });
+            core.info(`Removing former team members from ${teamSlug} ${existingMembers} ${desiredMembers}`);
             await removeFormerTeamMembers(client, org, teamSlug, existingMembers, desiredMembers);
+            core.info(`Done removing team members from ${teamSlug}`);
         }
         else {
             core.info(`No team was found in ${org} with slug ${teamSlug}. Creating one.`);
             const parentTeamId = teamData.parent_team !== undefined ? existingTeamsMap[teamData.parent_team] : null;
             await createTeamWithNoMembers(client, org, teamName, teamSlug, authenticatedUser, description, parentTeamId);
         }
+        core.info(`Adding new team members to ${teamSlug}`);
         await addNewTeamMembers(client, org, teamSlug, existingMembers, desiredMembers, allowInviteUsers);
     }
 }
@@ -4295,7 +4304,9 @@ function prefixName(unprefixedName, prefix) {
     return trimmedPrefix === '' ? unprefixedName : `${trimmedPrefix} ${unprefixedName}`;
 }
 async function removeFormerTeamMembers(client, org, teamSlug, existingMembers, desiredMembers) {
+    core.info(`Desired members: ${desiredMembers}`);
     for (const username of existingMembers) {
+        core.info(`Checking if ${username} is in desired members`);
         if (!desiredMembers.includes(username)) {
             core.info(`Removing ${username} from ${teamSlug}`);
             await client.teams.removeMembershipInOrg({ org, team_slug: teamSlug, username });
@@ -4307,21 +4318,30 @@ async function removeFormerTeamMembers(client, org, teamSlug, existingMembers, d
 }
 async function addNewTeamMembers(client, org, teamSlug, existingMembers, desiredMembers, allowInviteUsers) {
     for (const username of desiredMembers) {
+        core.info(`Checking if ${username} is in existing members`);
         if (!existingMembers.includes(username)) {
+            core.info(`${username} is not in existing members`);
             let addUser = true;
-            // if 
             if (!allowInviteUsers) {
-                const response = await client.orgs.checkMembership({
-                    org: org,
-                    username: username,
-                });
-                if (response.status === 204) {
-                    console.log(`${username} is a member of ${org}.`);
-                    addUser = true;
+                core.info(`Checking if ${username} is a member of ${org}`);
+                try {
+                    const response = await client.orgs.checkMembership({
+                        org: org,
+                        username: username
+                    });
+                    if (response.status === 204) {
+                        console.log(`${username} is a member of ${org}.`);
+                        addUser = true;
+                    }
+                    else {
+                        console.log(`${username} is not a member of ${org}.`);
+                        addUser = false;
+                    }
                 }
-                else {
-                    console.log(`${username} is not a member of ${org}.`);
-                    addUser = false;
+                catch (error) {
+                    core.info(`Error checking if ${username} is a member of ${org}`);
+                    core.info(error);
+                    throw error;
                 }
             }
             if (addUser) {
@@ -4335,7 +4355,12 @@ async function addNewTeamMembers(client, org, teamSlug, existingMembers, desired
     }
 }
 async function createTeamWithNoMembers(client, org, teamName, teamSlug, authenticatedUser, description, parentTeamId) {
-    let createTeamRequest = { org, name: teamName, description, privacy: 'closed' };
+    let createTeamRequest = {
+        org,
+        name: teamName,
+        description,
+        privacy: 'closed'
+    };
     if (parentTeamId != null) {
         createTeamRequest.parent_team_id = parentTeamId;
     }
@@ -4378,6 +4403,9 @@ async function fetchContent(client, repoPath) {
         throw new Error('Octokit.repos.getContents returned an unexpected response');
     }
     return Buffer.from(content, encoding).toString();
+}
+async function fetchContentFromFile(path) {
+    return fs_1.readFileSync(path).toString();
 }
 run();
 
