@@ -4,6 +4,7 @@ import {Octokit} from '@octokit/rest'
 import slugify from '@sindresorhus/slugify'
 import {readFileSync} from 'fs'
 import * as yaml from 'js-yaml'
+import {fetchTeamIdsByName, resolveParentTeamId} from './team-parent'
 
 interface TeamData {
   members: string[]
@@ -82,14 +83,7 @@ async function synchronizeTeamData(
   teamNamePrefix: string,
   allowInviteUsers: boolean
 ): Promise<void> {
-  const existingTeams = await client.paginate('GET /orgs/:org/teams', {
-    org,
-    per_page: 100
-  })
-  const existingTeamsMap: {[key: string]: number} = {}
-  for (const existingTeam of existingTeams) {
-    existingTeamsMap[existingTeam.name] = existingTeam.id
-  }
+  const existingTeamsMap = await fetchTeamIdsByName(client, org)
 
   for (const [unprefixedTeamName, teamData] of teams.entries()) {
     const teamName = prefixName(unprefixedTeamName, teamNamePrefix)
@@ -102,11 +96,7 @@ async function synchronizeTeamData(
 
     const {description, members: desiredMembers} = teamData
     const parentTeamName = teamData.parent_team
-    const parentTeamId = parentTeamName !== undefined ? existingTeamsMap[parentTeamName] : undefined
-
-    if (parentTeamName !== undefined && parentTeamId === undefined) {
-      throw new Error(`Parent team ${parentTeamName} for ${teamSlug} does not exist in ${org}`)
-    }
+    const parentTeamId = resolveParentTeamId(teamSlug, parentTeamName, existingTeamsMap, org)
 
     core.debug(`Desired team members for team slug ${teamSlug}:`)
     core.debug(JSON.stringify(desiredMembers))

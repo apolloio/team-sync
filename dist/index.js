@@ -4166,6 +4166,7 @@ const github = __importStar(__webpack_require__(469));
 const slugify_1 = __importDefault(__webpack_require__(178));
 const fs_1 = __webpack_require__(747);
 const yaml = __importStar(__webpack_require__(414));
+const team_parent_1 = __webpack_require__(502);
 async function run() {
     try {
         const PERSONAL_TOKEN_TYPE = 'personal';
@@ -4205,14 +4206,7 @@ async function run() {
     }
 }
 async function synchronizeTeamData(client, org, authenticatedUser, teams, teamNamePrefix, allowInviteUsers) {
-    const existingTeams = await client.paginate('GET /orgs/:org/teams', {
-        org,
-        per_page: 100
-    });
-    const existingTeamsMap = {};
-    for (const existingTeam of existingTeams) {
-        existingTeamsMap[existingTeam.name] = existingTeam.id;
-    }
+    const existingTeamsMap = await team_parent_1.fetchTeamIdsByName(client, org);
     for (const [unprefixedTeamName, teamData] of teams.entries()) {
         const teamName = prefixName(unprefixedTeamName, teamNamePrefix);
         const teamSlug = slugify_1.default(teamName, { decamelize: false });
@@ -4222,10 +4216,7 @@ async function synchronizeTeamData(client, org, authenticatedUser, teams, teamNa
         }
         const { description, members: desiredMembers } = teamData;
         const parentTeamName = teamData.parent_team;
-        const parentTeamId = parentTeamName !== undefined ? existingTeamsMap[parentTeamName] : undefined;
-        if (parentTeamName !== undefined && parentTeamId === undefined) {
-            throw new Error(`Parent team ${parentTeamName} for ${teamSlug} does not exist in ${org}`);
-        }
+        const parentTeamId = team_parent_1.resolveParentTeamId(teamSlug, parentTeamName, existingTeamsMap, org);
         core.debug(`Desired team members for team slug ${teamSlug}:`);
         core.debug(JSON.stringify(desiredMembers));
         const { existingTeam, existingMembers } = await getExistingTeamAndMembers(client, org, teamSlug);
@@ -11410,6 +11401,39 @@ class RequestError extends Error {
 
 exports.RequestError = RequestError;
 //# sourceMappingURL=index.js.map
+
+
+/***/ }),
+
+/***/ 502:
+/***/ (function(__unusedmodule, exports) {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", { value: true });
+async function fetchTeamIdsByName(client, org) {
+    const existingTeams = await client.paginate('GET /orgs/:org/teams', {
+        org,
+        per_page: 100
+    });
+    const teamIdsByName = {};
+    for (const existingTeam of existingTeams) {
+        teamIdsByName[existingTeam.name] = existingTeam.id;
+    }
+    return teamIdsByName;
+}
+exports.fetchTeamIdsByName = fetchTeamIdsByName;
+function resolveParentTeamId(teamSlug, parentTeamName, teamIdsByName, org) {
+    if (parentTeamName === undefined) {
+        return undefined;
+    }
+    const parentTeamId = teamIdsByName[parentTeamName];
+    if (parentTeamId === undefined) {
+        throw new Error(`Parent team ${parentTeamName} for ${teamSlug} does not exist in ${org}`);
+    }
+    return parentTeamId;
+}
+exports.resolveParentTeamId = resolveParentTeamId;
 
 
 /***/ }),
