@@ -152,6 +152,12 @@ jobs:
 You can add `"team_sync_ignored": true` to a team's properties to prevent that
 team from being synchronized with a corresponding GitHub Team.
 
+### The `parent_team` property
+
+Set `parent_team` to the name of an existing organization team to create or
+update the team as its child. The sync fails if the configured parent cannot be
+found or if GitHub does not apply the parent relationship.
+
 ## Fine print
 
 Note that if you rename a team (in a way that updates the team's computed slug),

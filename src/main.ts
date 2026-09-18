@@ -12,10 +12,15 @@ interface TeamData {
   parent_team?: string
 }
 
+interface TeamParentResponse {
+  parent?: {
+    id: number
+  } | null
+}
+
 async function run(): Promise<void> {
   try {
     const PERSONAL_TOKEN_TYPE = 'personal'
-    const APP_TOKEN_TYPE = 'app'
     const token = core.getInput('repo-token', {required: true})
     // if set will treat team-data-path as a local file path, otherwise will treat it as a path to a file in the repo
     const readFromFile = core.getInput('read-from-file') || true
@@ -77,11 +82,12 @@ async function synchronizeTeamData(
   teamNamePrefix: string,
   allowInviteUsers: boolean
 ): Promise<void> {
-  const existingTeams = await client.teams.list({
-    org: org
+  const existingTeams = await client.paginate('GET /orgs/:org/teams', {
+    org,
+    per_page: 100
   })
   const existingTeamsMap: {[key: string]: number} = {}
-  for (const existingTeam of existingTeams.data) {
+  for (const existingTeam of existingTeams) {
     existingTeamsMap[existingTeam.name] = existingTeam.id
   }
 
@@ -95,6 +101,12 @@ async function synchronizeTeamData(
     }
 
     const {description, members: desiredMembers} = teamData
+    const parentTeamName = teamData.parent_team
+    const parentTeamId = parentTeamName !== undefined ? existingTeamsMap[parentTeamName] : undefined
+
+    if (parentTeamName !== undefined && parentTeamId === undefined) {
+      throw new Error(`Parent team ${parentTeamName} for ${teamSlug} does not exist in ${org}`)
+    }
 
     core.debug(`Desired team members for team slug ${teamSlug}:`)
     core.debug(JSON.stringify(desiredMembers))
@@ -105,7 +117,13 @@ async function synchronizeTeamData(
       core.debug(`Existing team members for team slug ${teamSlug}:`)
       core.debug(JSON.stringify(existingMembers))
       core.info(`Updating in org team ${teamSlug}`)
-      await client.teams.updateInOrg({org, team_slug: teamSlug, name: teamName, description})
+      await client.teams.updateInOrg({
+        org,
+        team_slug: teamSlug,
+        name: teamName,
+        description,
+        parent_team_id: parentTeamId
+      })
       core.info(
         `Removing former team members from ${teamSlug} ${existingMembers} ${desiredMembers}`
       )
@@ -113,8 +131,6 @@ async function synchronizeTeamData(
       core.info(`Done removing team members from ${teamSlug}`)
     } else {
       core.info(`No team was found in ${org} with slug ${teamSlug}. Creating one.`)
-      const parentTeamId =
-        teamData.parent_team !== undefined ? existingTeamsMap[teamData.parent_team] : null
       await createTeamWithNoMembers(
         client,
         org,
@@ -125,6 +141,9 @@ async function synchronizeTeamData(
         parentTeamId
       )
     }
+    if (parentTeamName !== undefined && parentTeamId !== undefined) {
+      await verifyTeamParent(client, org, teamSlug, parentTeamName, parentTeamId)
+    }
     core.info(`Adding new team members to ${teamSlug}`)
     await addNewTeamMembers(
       client,
@@ -133,6 +152,24 @@ async function synchronizeTeamData(
       existingMembers,
       desiredMembers,
       allowInviteUsers
+    )
+  }
+}
+
+async function verifyTeamParent(
+  client: github.GitHub,
+  org: string,
+  teamSlug: string,
+  parentTeamName: string,
+  parentTeamId: number
+): Promise<void> {
+  const teamResponse = await client.teams.getByName({org, team_slug: teamSlug})
+  const actualParent = ((teamResponse.data as unknown) as TeamParentResponse).parent
+  const actualParentId = actualParent ? actualParent.id : undefined
+
+  if (actualParentId !== parentTeamId) {
+    throw new Error(
+      `Team ${teamSlug} was not assigned to configured parent ${parentTeamName} in ${org}`
     )
   }
 }
@@ -252,14 +289,14 @@ async function addNewTeamMembers(
         core.info(`Checking if ${username} is a member of ${org}`)
         try {
           const response = await client.orgs.checkMembership({
-            org: org,
-            username: username
+            org,
+            username
           })
           if (response.status === 204) {
-            console.log(`${username} is a member of ${org}.`)
+            core.info(`${username} is a member of ${org}.`)
             addUser = true
           } else {
-            console.log(`${username} is not a member of ${org}.`)
+            core.info(`${username} is not a member of ${org}.`)
             addUser = false
           }
         } catch (error) {
@@ -287,7 +324,7 @@ async function createTeamWithNoMembers(
   description?: string,
   parentTeamId?: number | null
 ): Promise<void> {
-  let createTeamRequest: Octokit.TeamsCreateParams = {
+  const createTeamRequest: Octokit.TeamsCreateParams = {
     org,
     name: teamName,
     description,

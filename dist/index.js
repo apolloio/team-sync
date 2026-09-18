@@ -4169,7 +4169,6 @@ const yaml = __importStar(__webpack_require__(414));
 async function run() {
     try {
         const PERSONAL_TOKEN_TYPE = 'personal';
-        const APP_TOKEN_TYPE = 'app';
         const token = core.getInput('repo-token', { required: true });
         // if set will treat team-data-path as a local file path, otherwise will treat it as a path to a file in the repo
         const readFromFile = core.getInput('read-from-file') || true;
@@ -4206,11 +4205,12 @@ async function run() {
     }
 }
 async function synchronizeTeamData(client, org, authenticatedUser, teams, teamNamePrefix, allowInviteUsers) {
-    const existingTeams = await client.teams.list({
-        org: org
+    const existingTeams = await client.paginate('GET /orgs/:org/teams', {
+        org,
+        per_page: 100
     });
     const existingTeamsMap = {};
-    for (const existingTeam of existingTeams.data) {
+    for (const existingTeam of existingTeams) {
         existingTeamsMap[existingTeam.name] = existingTeam.id;
     }
     for (const [unprefixedTeamName, teamData] of teams.entries()) {
@@ -4221,6 +4221,11 @@ async function synchronizeTeamData(client, org, authenticatedUser, teams, teamNa
             continue;
         }
         const { description, members: desiredMembers } = teamData;
+        const parentTeamName = teamData.parent_team;
+        const parentTeamId = parentTeamName !== undefined ? existingTeamsMap[parentTeamName] : undefined;
+        if (parentTeamName !== undefined && parentTeamId === undefined) {
+            throw new Error(`Parent team ${parentTeamName} for ${teamSlug} does not exist in ${org}`);
+        }
         core.debug(`Desired team members for team slug ${teamSlug}:`);
         core.debug(JSON.stringify(desiredMembers));
         const { existingTeam, existingMembers } = await getExistingTeamAndMembers(client, org, teamSlug);
@@ -4228,18 +4233,34 @@ async function synchronizeTeamData(client, org, authenticatedUser, teams, teamNa
             core.debug(`Existing team members for team slug ${teamSlug}:`);
             core.debug(JSON.stringify(existingMembers));
             core.info(`Updating in org team ${teamSlug}`);
-            await client.teams.updateInOrg({ org, team_slug: teamSlug, name: teamName, description });
+            await client.teams.updateInOrg({
+                org,
+                team_slug: teamSlug,
+                name: teamName,
+                description,
+                parent_team_id: parentTeamId
+            });
             core.info(`Removing former team members from ${teamSlug} ${existingMembers} ${desiredMembers}`);
             await removeFormerTeamMembers(client, org, teamSlug, existingMembers, desiredMembers);
             core.info(`Done removing team members from ${teamSlug}`);
         }
         else {
             core.info(`No team was found in ${org} with slug ${teamSlug}. Creating one.`);
-            const parentTeamId = teamData.parent_team !== undefined ? existingTeamsMap[teamData.parent_team] : null;
             await createTeamWithNoMembers(client, org, teamName, teamSlug, authenticatedUser, description, parentTeamId);
+        }
+        if (parentTeamName !== undefined && parentTeamId !== undefined) {
+            await verifyTeamParent(client, org, teamSlug, parentTeamName, parentTeamId);
         }
         core.info(`Adding new team members to ${teamSlug}`);
         await addNewTeamMembers(client, org, teamSlug, existingMembers, desiredMembers, allowInviteUsers);
+    }
+}
+async function verifyTeamParent(client, org, teamSlug, parentTeamName, parentTeamId) {
+    const teamResponse = await client.teams.getByName({ org, team_slug: teamSlug });
+    const actualParent = teamResponse.data.parent;
+    const actualParentId = actualParent ? actualParent.id : undefined;
+    if (actualParentId !== parentTeamId) {
+        throw new Error(`Team ${teamSlug} was not assigned to configured parent ${parentTeamName} in ${org}`);
     }
 }
 function parseTeamData(rawTeamConfig) {
@@ -4326,15 +4347,15 @@ async function addNewTeamMembers(client, org, teamSlug, existingMembers, desired
                 core.info(`Checking if ${username} is a member of ${org}`);
                 try {
                     const response = await client.orgs.checkMembership({
-                        org: org,
-                        username: username
+                        org,
+                        username
                     });
                     if (response.status === 204) {
-                        console.log(`${username} is a member of ${org}.`);
+                        core.info(`${username} is a member of ${org}.`);
                         addUser = true;
                     }
                     else {
-                        console.log(`${username} is not a member of ${org}.`);
+                        core.info(`${username} is not a member of ${org}.`);
                         addUser = false;
                     }
                 }
@@ -4355,7 +4376,7 @@ async function addNewTeamMembers(client, org, teamSlug, existingMembers, desired
     }
 }
 async function createTeamWithNoMembers(client, org, teamName, teamSlug, authenticatedUser, description, parentTeamId) {
-    let createTeamRequest = {
+    const createTeamRequest = {
         org,
         name: teamName,
         description,
