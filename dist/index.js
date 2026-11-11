@@ -4166,6 +4166,7 @@ const github = __importStar(__webpack_require__(469));
 const slugify_1 = __importDefault(__webpack_require__(178));
 const fs_1 = __webpack_require__(747);
 const yaml = __importStar(__webpack_require__(414));
+const teams_1 = __webpack_require__(335);
 async function run() {
     try {
         const PERSONAL_TOKEN_TYPE = 'personal';
@@ -4223,7 +4224,7 @@ async function synchronizeTeamData(client, org, authenticatedUser, teams, teamNa
         const { description, members: desiredMembers } = teamData;
         core.debug(`Desired team members for team slug ${teamSlug}:`);
         core.debug(JSON.stringify(desiredMembers));
-        const { existingTeam, existingMembers } = await getExistingTeamAndMembers(client, org, teamSlug);
+        const { existingTeam, existingMembers } = await teams_1.getExistingTeamAndMembers(client, org, teamSlug);
         if (existingTeam) {
             core.debug(`Existing team members for team slug ${teamSlug}:`);
             core.debug(JSON.stringify(existingMembers));
@@ -4373,20 +4374,6 @@ async function createTeamWithNoMembers(client, org, teamName, teamSlug, authenti
             username: authenticatedUser
         });
     }
-}
-async function getExistingTeamAndMembers(client, org, teamSlug) {
-    let existingTeam;
-    let existingMembers = [];
-    try {
-        const teamResponse = await client.teams.getByName({ org, team_slug: teamSlug });
-        existingTeam = teamResponse.data;
-        const membersResponse = await client.teams.listMembersInOrg({ org, team_slug: teamSlug });
-        existingMembers = membersResponse.data.map(m => m.login);
-    }
-    catch (error) {
-        existingTeam = null;
-    }
-    return { existingTeam, existingMembers };
 }
 async function fetchContent(client, repoPath) {
     const response = await client.repos.getContents({
@@ -5429,6 +5416,37 @@ isStream.duplex = function (stream) {
 isStream.transform = function (stream) {
 	return isStream.duplex(stream) && typeof stream._transform === 'function' && typeof stream._transformState === 'object';
 };
+
+
+/***/ }),
+
+/***/ 335:
+/***/ (function(__unusedmodule, exports) {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", { value: true });
+async function getExistingTeamAndMembers(client, org, teamSlug) {
+    let teamResponse;
+    try {
+        teamResponse = await client.teams.getByName({ org, team_slug: teamSlug });
+    }
+    catch (error) {
+        // Only a 404 means the team does not exist. Anything else (5xx, rate limiting, auth) must
+        // fail the run; treating it as missing makes us try to recreate an existing team, which
+        // GitHub rejects with "Name must be unique for this org".
+        if (error.status === 404) {
+            return { existingTeam: null, existingMembers: [] };
+        }
+        throw error;
+    }
+    const membersResponse = await client.teams.listMembersInOrg({ org, team_slug: teamSlug });
+    return {
+        existingTeam: teamResponse.data,
+        existingMembers: membersResponse.data.map(m => m.login)
+    };
+}
+exports.getExistingTeamAndMembers = getExistingTeamAndMembers;
 
 
 /***/ }),

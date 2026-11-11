@@ -4,6 +4,7 @@ import {Octokit} from '@octokit/rest'
 import slugify from '@sindresorhus/slugify'
 import {readFileSync} from 'fs'
 import * as yaml from 'js-yaml'
+import {getExistingTeamAndMembers} from './teams'
 
 interface TeamData {
   members: string[]
@@ -308,32 +309,6 @@ async function createTeamWithNoMembers(
       username: authenticatedUser
     })
   }
-}
-
-async function getExistingTeamAndMembers(
-  client: github.GitHub,
-  org: string,
-  teamSlug: string
-): Promise<{
-  existingTeam: Octokit.TeamsGetByNameResponse | null
-  existingMembers: string[]
-}> {
-  let existingTeam
-  let existingMembers: string[] = []
-
-  try {
-    const teamResponse = await client.teams.getByName({org, team_slug: teamSlug})
-
-    existingTeam = teamResponse.data
-
-    const membersResponse = await client.teams.listMembersInOrg({org, team_slug: teamSlug})
-
-    existingMembers = membersResponse.data.map(m => m.login)
-  } catch (error) {
-    existingTeam = null
-  }
-
-  return {existingTeam, existingMembers}
 }
 
 async function fetchContent(client: github.GitHub, repoPath: string): Promise<string> {
